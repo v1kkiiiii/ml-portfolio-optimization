@@ -1,25 +1,15 @@
 """
-Risk model: covariance estimation.
-
-Sample covariance is extremely noisy with limited history (classic
-Markowitz problem — estimation error dominates for anything beyond a
-handful of assets). We use Ledoit-Wolf shrinkage, which blends the sample
-covariance with a structured target (scaled identity), and is the
-standard practical fix used in industry.
+Covariance estimation. Sample covariance gets noisy fast once you have
+more than a handful of assets relative to your history length - this is
+the classic Markowitz estimation-error problem. Ledoit-Wolf shrinkage
+toward a structured target is the standard practical fix, so that's
+what we use here instead of raw sample cov.
 """
-import numpy as np
 import pandas as pd
 from sklearn.covariance import LedoitWolf
 
 
-def estimate_covariance(
-    returns_window: pd.DataFrame,
-    annualize: bool = True,
-) -> pd.DataFrame:
-    """
-    returns_window : DataFrame (date x ticker) of daily returns, most
-                      recent `lookback` days only (pass in pre-sliced).
-    """
+def estimate_covariance(returns_window: pd.DataFrame, annualize: bool = True) -> pd.DataFrame:
     lw = LedoitWolf()
     lw.fit(returns_window.values)
     cov = lw.covariance_

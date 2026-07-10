@@ -1,75 +1,66 @@
 # ML-Driven Portfolio Optimization
 
-An end-to-end quantitative pipeline that combines a machine learning
-return forecaster with classical mean-variance optimization, evaluated
-through a walk-forward backtest against standard benchmarks.
-
-Built to demonstrate: factor-style feature engineering, avoiding
-lookahead bias, shrinkage-based risk estimation, constrained convex
-optimization, and honest out-of-sample evaluation — the core toolkit for
-quant research and applied ML roles.
+Combines a gradient-boosted return forecaster with mean-variance
+optimization, evaluated with a proper walk-forward backtest against
+equal-weight and inverse-vol benchmarks.
 
 ## Pipeline
 
 ```
-Prices  →  Features  →  ML Model  →  Expected Returns (μ)
-                                            │
-Prices  →  Rolling Window  →  Ledoit-Wolf  →  Covariance (Σ)
-                                            │
-                              Mean-Variance Optimizer
-                              max Sharpe, long-only, 25% cap per asset
-                                            │
-                              Walk-Forward Backtest
-                              monthly rebalance, transaction costs
-                                            │
-                    Sharpe / Sortino / Max DD / Calmar vs benchmarks
+Prices -> Features -> ML Model -> Expected Returns (mu)
+                                         |
+Prices -> Rolling Window -> Ledoit-Wolf -> Covariance (Sigma)
+                                         |
+                          Mean-Variance Optimizer
+                     max Sharpe, long-only, 25% cap per asset
+                                         |
+                             Walk-Forward Backtest
+                       monthly rebalance, transaction costs
+                                         |
+                Sharpe / Sortino / Max DD / Calmar vs benchmarks
 ```
 
-## Why each design choice
+## Notes on the design choices
 
-**Data.** This sandbox has no internet access, so `data/generate_data.py`
-simulates a 15-asset universe with a 3-factor macro structure, volatility
-regime switching, fat-tailed jump risk, and an AR(1) "alpha state" per
-asset that gives medium-term momentum (21–126 day windows) genuine,
-learnable predictive power — mirroring the empirical equity momentum
-literature. **To run on real data**, swap `load_prices()` for a
-`yfinance` (or Bloomberg/Refinitiv) pull — every downstream module only
-depends on a plain `(date × ticker)` price DataFrame, so nothing else
-changes.
+**Data.** No internet access in the environment I built this in, so
+`data/generate_data.py` simulates a 15-asset universe: a 3-factor macro
+structure, vol regime switching, occasional jumps, and a slow-moving
+per-asset alpha state that gives medium-term momentum (21-126 day
+windows) real predictive power - basically trying to mirror the
+empirical equity momentum literature instead of just being noise dressed
+up as data. To run this on real data, swap out `load_prices()` for a
+`yfinance` pull - everything downstream just expects a plain
+`(date x ticker)` price DataFrame.
 
-**Features.** Momentum (21/63/126d), realized vol (21/63d), vol-of-vol
-(regime signal), price-to-moving-average, RSI(14), and cross-sectional
-momentum rank. All are computed strictly from information available at
-time *t*.
+**Features.** Momentum at a few horizons, realized vol, vol-of-vol
+(regime proxy), price vs moving average, RSI, and cross-sectional
+momentum rank. All computed strictly from information available at time t.
 
-**Model.** Gradient Boosted Trees (`sklearn.GradientBoostingRegressor`).
-Chosen over linear regression because it captures nonlinear
-feature interactions, and over deep nets because with ~15 assets and a
-few thousand rows, a shallow tree ensemble generalizes far better and
-is what's actually used in most tabular quant-factor work.
+**Model.** Gradient boosted trees. Went with this over a linear model
+because it picks up nonlinear feature interactions, and over a neural
+net because with ~15 assets and a few thousand rows a shallow tree
+ensemble generalizes a lot better and doesn't need nearly as much data.
 
-**No lookahead, anywhere.** The model is retrained from scratch at every
-monthly rebalance date, using only rows whose forward-return label window
-closes *before* that date. This is the single most common bug in retail
-backtests — it's handled explicitly in `src/models.py::train_predict_walk_forward`.
+**No lookahead.** The model gets retrained from scratch at every monthly
+rebalance, using only rows whose forward-return label window has
+actually closed before that date. This is the most common bug in
+homegrown backtests - handled in `src/models.py::train_predict_walk_forward`.
 
-**Risk model.** Sample covariance is notoriously noisy with limited
-history (classic Markowitz estimation-error problem). We use Ledoit-Wolf
-shrinkage toward a structured target, the standard practical fix.
+**Risk model.** Sample covariance is noisy with limited history (the
+classic Markowitz estimation-error issue). Ledoit-Wolf shrinkage toward
+a structured target fixes this and is standard practice.
 
-**Optimizer.** Constrained mean-variance optimization (`scipy.SLSQP`):
-maximize Sharpe subject to full investment, long-only, and a 25% single-name
-cap (prevents the optimizer from concentrating entirely in whichever
-asset the model likes most — a real risk-management constraint, not
-just a modeling nicety).
+**Optimizer.** Constrained mean-variance via `scipy.SLSQP` - max Sharpe,
+fully invested, long-only, 25% single-name cap so the optimizer can't
+just dump everything into whatever the model likes most that month.
 
-**Backtest.** Monthly rebalancing, 10bps transaction cost per unit of
-turnover, weights drift with returns between rebalances (no artificial
-daily rebalancing). Benchmarked against **equal-weight (1/N)** and
-**inverse-volatility** portfolios — the two benchmarks any "smart"
-portfolio construction method needs to beat to justify its complexity.
+**Backtest.** Monthly rebalancing, 10bps transaction cost per unit
+turnover, weights drift with returns between rebalances rather than
+being artificially reset daily. Benchmarked against equal-weight and
+inverse-vol - the two things any "smarter" weighting scheme actually
+needs to beat.
 
-## Results (synthetic universe, 2019–2024)
+## Results (synthetic universe, 2019-2024)
 
 | Strategy | CAGR | Ann. Vol | Sharpe | Max DD |
 |---|---|---|---|---|
@@ -77,35 +68,34 @@ portfolio construction method needs to beat to justify its complexity.
 | Equal-Weight | 15.1% | 14.0% | 0.94 | -32.3% |
 | Inverse-Vol | 14.7% | 13.8% | 0.92 | -31.6% |
 
-Out-of-sample Information Coefficient (Spearman rank correlation between
-predicted and realized forward returns): **~0.07**, consistent with
-genuinely useful — not overfit — equity factors in practice (top
-quantitative signals typically run 0.03–0.08 IC; anything above ~0.15
-on real data should be treated with suspicion, not celebrated).
+Out-of-sample information coefficient (spearman rank corr between
+predicted and realized forward returns) came out to about 0.07, which is
+in line with genuinely useful equity factors in practice - most good
+signals run 0.03-0.08 IC. Anything much higher than that on real data
+would be a red flag, not a win.
 
-**Important honesty note:** these results are on a *controlled synthetic
-environment* built specifically to contain a learnable signal. Real
-markets are far more adversarial — this project's value is in the
-methodology (no-lookahead walk-forward evaluation, shrinkage risk
-estimation, constrained optimization, benchmark comparison), not in the
-specific Sharpe ratio, which would compress substantially on live data.
-Say this explicitly in an interview — it signals maturity, not weakness.
+Worth saying plainly: this is a controlled synthetic environment built
+specifically to contain a learnable signal, so these numbers won't hold
+up as-is on live markets. The point of the project is the methodology -
+no-lookahead walk-forward evaluation, shrinkage risk estimation,
+constrained optimization, actually benchmarking against something -
+not the specific Sharpe ratio.
 
-## Project structure
+## Structure
 
 ```
 portfolio-ml/
 ├── data/
-│   └── generate_data.py     # synthetic market simulator (swap for real data loader)
+│   └── generate_data.py     synthetic market simulator
 ├── src/
-│   ├── features.py          # feature engineering, no-lookahead labels
-│   ├── models.py            # walk-forward ML training/prediction
-│   ├── risk.py               # Ledoit-Wolf covariance estimation
-│   ├── optimizer.py          # mean-variance optimization + efficient frontier
-│   └── backtest.py           # walk-forward backtest engine + metrics
-├── main.py                   # runs the full pipeline end to end
+│   ├── features.py          feature engineering, no-lookahead labels
+│   ├── models.py             walk-forward ML training/prediction
+│   ├── risk.py                Ledoit-Wolf covariance estimation
+│   ├── optimizer.py           mean-variance optimization + efficient frontier
+│   └── backtest.py            walk-forward backtest engine + metrics
+├── main.py                    runs the full pipeline
 ├── requirements.txt
-└── outputs/                  # generated charts + metrics CSV
+└── outputs/                   generated charts + metrics
 ```
 
 ## Running it
@@ -115,22 +105,16 @@ pip install -r requirements.txt
 python3 main.py
 ```
 
-Outputs (`outputs/`):
-- `cumulative_returns.png` — strategy vs benchmarks growth of $1
-- `drawdown.png` — underwater equity curve
-- `efficient_frontier.png` — risk/return frontier with optimal portfolio marked
-- `weights_over_time.png` — portfolio composition through time
-- `feature_importance.png` — which signals the model actually uses
-- `backtest_metrics.csv` — full metrics table
+Outputs land in `outputs/`: cumulative returns, drawdown, efficient
+frontier, weights over time, feature importance, and a metrics CSV.
 
-## Extensions worth mentioning in an interview
+## Things worth digging into further
 
-- Swap Gradient Boosting for an LSTM/Transformer on sequential price
-  data, or a linear factor model as a simpler baseline to compare against
-- Add a Black-Litterman layer to blend ML views with a market-cap prior
-  (reduces the optimizer's sensitivity to noisy point estimates of μ)
-- Risk parity or CVaR-based objectives instead of variance
-- Purged/embargoed cross-validation (López de Prado) instead of a simple
-  chronological split, to more rigorously bound leakage from overlapping
-  labels
-- Multi-horizon ensembling (predict 5d/21d/63d returns and blend)
+- Swap gradient boosting for an LSTM on sequential price data, or a
+  plain linear factor model as a simpler baseline
+- Black-Litterman to blend the ML's views with a market-cap prior,
+  reduces sensitivity to noisy point estimates of mu
+- Risk parity or CVaR objective instead of variance
+- Purged/embargoed cross-validation instead of a simple chronological
+  split, to more rigorously bound leakage from overlapping labels
+- Multi-horizon ensembling - predict 5d/21d/63d and blend

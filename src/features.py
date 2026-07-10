@@ -1,29 +1,14 @@
 """
-Feature engineering for the return-prediction model.
-
-All features are computed using only information available up to time t
-(no lookahead). The label is the FORWARD return over the next `horizon`
-days, which the model tries to predict using only past data.
+Feature engineering for the return prediction model. Everything here
+only looks backward from time t - the label (fwd_ret) is the only
+forward-looking column, and it's the thing we're trying to predict, not
+a feature.
 """
 import numpy as np
 import pandas as pd
 
 
 def compute_features(prices: pd.DataFrame, horizon: int = 21) -> pd.DataFrame:
-    """
-    Build a tidy (date, ticker) -> features panel.
-
-    Features per asset:
-      - mom_21, mom_63, mom_126 : past cumulative returns (momentum)
-      - vol_21, vol_63          : realized volatility
-      - rsi_14                  : relative strength index
-      - ma_ratio                : price vs 50d moving average
-      - vol_of_vol              : stability of volatility (regime signal)
-      - xsec_mom_rank           : cross-sectional momentum rank (relative strength)
-
-    Label:
-      - fwd_ret : forward `horizon`-day return (target for the ML model)
-    """
     daily_ret = prices.pct_change()
     rows = []
 
@@ -48,9 +33,9 @@ def compute_features(prices: pd.DataFrame, horizon: int = 21) -> pd.DataFrame:
         rs = gain / loss.replace(0, np.nan)
         rsi_14 = 100 - (100 / (1 + rs))
 
-        fwd_ret = p.shift(-horizon) / p - 1  # forward-looking label
+        fwd_ret = p.shift(-horizon) / p - 1
 
-        df = pd.DataFrame({
+        rows.append(pd.DataFrame({
             "date": p.index,
             "ticker": ticker,
             "mom_21": mom_21.values,
@@ -62,16 +47,14 @@ def compute_features(prices: pd.DataFrame, horizon: int = 21) -> pd.DataFrame:
             "ma_ratio": ma_ratio.values,
             "rsi_14": rsi_14.values,
             "fwd_ret": fwd_ret.values,
-        })
-        rows.append(df)
+        }))
 
     panel = pd.concat(rows, ignore_index=True)
 
-    # cross-sectional momentum rank (relative strength vs universe, per date)
+    # relative strength vs the rest of the universe on a given date
     panel["xsec_mom_rank"] = panel.groupby("date")["mom_63"].rank(pct=True)
 
-    panel = panel.dropna().reset_index(drop=True)
-    return panel
+    return panel.dropna().reset_index(drop=True)
 
 
 FEATURE_COLS = [

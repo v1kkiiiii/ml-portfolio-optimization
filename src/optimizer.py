@@ -1,13 +1,9 @@
 """
-Mean-variance portfolio optimization (Markowitz), using scipy SLSQP.
-
-Given ML-predicted expected returns mu and a shrunk covariance matrix
-Sigma, solve for weights w that:
-  - maximize Sharpe ratio (mu'w - rf) / sqrt(w'Sigma w)   [primary]
-  - or minimize variance w'Sigma w                          [defensive variant]
-subject to:
-  - sum(w) == 1  (fully invested)
-  - 0 <= w_i <= max_weight  (long-only, diversification cap)
+Mean-variance optimization (scipy SLSQP). Given the ML's expected returns
+and a shrunk covariance matrix, solve for weights that maximize Sharpe,
+subject to being fully invested, long-only, and capped per name so the
+optimizer can't just dump everything into whatever asset the model likes
+most that month.
 """
 import numpy as np
 import pandas as pd
@@ -26,17 +22,7 @@ def _variance(w, mu, sigma, rf):
     return w @ sigma @ w
 
 
-def optimize_portfolio(
-    mu: pd.Series,
-    sigma: pd.DataFrame,
-    objective: str = "max_sharpe",
-    max_weight: float = 0.25,
-    rf: float = 0.02,
-) -> pd.Series:
-    """
-    mu    : expected annual return per asset (Series, index=tickers)
-    sigma : annualized covariance matrix (DataFrame, index/cols=tickers)
-    """
+def optimize_portfolio(mu: pd.Series, sigma: pd.DataFrame, objective="max_sharpe", max_weight=0.25, rf=0.02):
     tickers = mu.index.tolist()
     n = len(tickers)
     mu_arr = mu.values
@@ -45,7 +31,6 @@ def optimize_portfolio(
     w0 = np.ones(n) / n
     bounds = [(0.0, max_weight)] * n
     constraints = [{"type": "eq", "fun": lambda w: np.sum(w) - 1.0}]
-
     fn = _neg_sharpe if objective == "max_sharpe" else _variance
 
     result = minimize(
@@ -55,20 +40,15 @@ def optimize_portfolio(
     )
 
     if not result.success:
-        # fall back to equal weight if optimizer fails to converge
-        w = w0
+        w = w0  # fall back to equal weight if it doesn't converge
     else:
-        w = result.x
-        w = np.clip(w, 0, None)
+        w = np.clip(result.x, 0, None)
         w = w / w.sum()
 
     return pd.Series(w, index=tickers, name="weight")
 
 
-def efficient_frontier(
-    mu: pd.Series, sigma: pd.DataFrame, n_points: int = 30, max_weight: float = 0.25,
-) -> pd.DataFrame:
-    """Trace the efficient frontier by minimizing variance for a grid of target returns."""
+def efficient_frontier(mu: pd.Series, sigma: pd.DataFrame, n_points=30, max_weight=0.25) -> pd.DataFrame:
     tickers = mu.index.tolist()
     n = len(tickers)
     mu_arr = mu.values
