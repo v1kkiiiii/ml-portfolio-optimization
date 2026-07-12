@@ -1,5 +1,7 @@
 # ML-Driven Portfolio Optimization
 
+An ML-driven portfolio construction system built to demonstrate the full quant research stack — from features to a properly out-of-sample-tested Sharpe ratio.
+
 Combines a gradient-boosted return forecaster with mean-variance
 optimization, evaluated with a proper walk-forward backtest against
 equal-weight and inverse-vol benchmarks.
@@ -68,6 +70,9 @@ needs to beat.
 | Equal-Weight | 15.1% | 14.0% | 0.94 | -32.3% |
 | Inverse-Vol | 14.7% | 13.8% | 0.92 | -31.6% |
 
+![Cumulative Returns](outputs/cumulative_returns.png)
+![Efficient Frontier](outputs/efficient_frontier.png)
+
 Out-of-sample information coefficient (spearman rank corr between
 predicted and realized forward returns) came out to about 0.07, which is
 in line with genuinely useful equity factors in practice - most good
@@ -108,13 +113,7 @@ python3 main.py
 Outputs land in `outputs/`: cumulative returns, drawdown, efficient
 frontier, weights over time, feature importance, and a metrics CSV.
 
-## Things worth digging into further
+## Possible extensions
 
-- Swap gradient boosting for an LSTM on sequential price data, or a
-  plain linear factor model as a simpler baseline
-- Black-Litterman to blend the ML's views with a market-cap prior,
-  reduces sensitivity to noisy point estimates of mu
-- Risk parity or CVaR objective instead of variance
-- Purged/embargoed cross-validation instead of a simple chronological
-  split, to more rigorously bound leakage from overlapping labels
-- Multi-horizon ensembling - predict 5d/21d/63d and blend
+- Black-Litterman to blend the ML's views with a market-cap prior, reducing sensitivity to noisy point estimates of mu
+- Purged/embargoed cross-validation instead of a simple chronological split, to more rigorously bound label leakage
