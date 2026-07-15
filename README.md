@@ -131,7 +131,7 @@ portfolio-ml/
 │   ├── features.py          feature engineering, no-lookahead labels
 │   ├── models.py             walk-forward ML training/prediction
 │   ├── risk.py                Ledoit-Wolf covariance estimation
-│   ├── optimizer.py           mean-variance optimization + efficient frontier
+│   ├── optimizer.py           mean-variance optimization, risk profiles, constraints
 │   └── backtest.py            walk-forward backtest engine + metrics
 ├── main.py                    runs the full pipeline
 ├── requirements.txt
