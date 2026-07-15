@@ -70,8 +70,20 @@ def main():
 
     frontier = efficient_frontier(mu_snapshot, sigma_snapshot, n_points=25, max_weight=0.25)
 
-    print("\nrunning full backtest...")
-    result_ml, result_ew, result_iv = run_backtest(prices, preds, cov_lookback=126, max_weight=0.25, tc_bps=10.0)
+    print("\napplying a sector constraint (max 40% in any one sector)...")
+    sector_dict = sectors["sector"].to_dict()
+    sector_caps = {s: 0.40 for s in sectors["sector"].unique()}
+    w_sector_constrained = optimize_portfolio(
+        mu_snapshot, sigma_snapshot, objective="max_sharpe", max_weight=0.25,
+        sector_map=sector_dict, sector_caps=sector_caps,
+    )
+    sector_exposure = w_sector_constrained.groupby(sector_dict).sum()
+    print("sector exposure with 40% cap:")
+    for s, w in sector_exposure.sort_values(ascending=False).items():
+        print(f"  {s:12s} {w:.1%}")
+
+    print("\nrunning full backtest (moderate risk profile)...")
+    result_ml, result_ew, result_iv = run_backtest(prices, preds, cov_lookback=126, tc_bps=10.0)
 
     metrics_df = pd.DataFrame({
         res["label"]: compute_metrics(res["daily_returns"]) for res in (result_ml, result_ew, result_iv)
@@ -79,12 +91,27 @@ def main():
     print(metrics_df.to_string(float_format=lambda x: f"{x:.4f}"))
     metrics_df.to_csv(os.path.join(OUT, "backtest_metrics.csv"))
 
+    print("\ncomparing risk appetite profiles (conservative/moderate/aggressive)...")
+    profile_results = {}
+    for profile in ["conservative", "moderate", "aggressive"]:
+        res, _, _ = run_backtest(prices, preds, cov_lookback=126, tc_bps=10.0,
+                                  optimizer_kwargs={"risk_profile": profile})
+        res["label"] = profile.capitalize()
+        profile_results[profile] = res
+
+    profile_metrics = pd.DataFrame({
+        r["label"]: compute_metrics(r["daily_returns"]) for r in profile_results.values()
+    }).T
+    print(profile_metrics.to_string(float_format=lambda x: f"{x:.4f}"))
+    profile_metrics.to_csv(os.path.join(OUT, "risk_profile_metrics.csv"))
+
     print("\ngenerating plots...")
     _plot_cumulative_returns(result_ml, result_ew, result_iv)
     _plot_drawdown(result_ml, result_ew, result_iv)
     _plot_efficient_frontier(frontier, mu_snapshot, sigma_snapshot, w_opt)
     _plot_weights_over_time(result_ml)
     _plot_feature_importance(diag["feature_importance"])
+    _plot_risk_profiles(profile_results)
     print(f"done - see {OUT}/")
 
     return metrics_df
@@ -157,6 +184,22 @@ def _plot_weights_over_time(result_ml):
     ax.spines[["top", "right"]].set_visible(False)
     fig.tight_layout()
     fig.savefig(os.path.join(OUT, "weights_over_time.png"), dpi=150)
+    plt.close(fig)
+
+
+def _plot_risk_profiles(profile_results):
+    fig, ax = plt.subplots(figsize=(10, 6))
+    colors = {"Conservative": "#10b981", "Moderate": "#2563eb", "Aggressive": "#ef4444"}
+    for profile, res in profile_results.items():
+        cum = (1 + res["daily_returns"]).cumprod()
+        ax.plot(cum.index, cum.values, label=res["label"], color=colors.get(res["label"]), linewidth=2)
+    ax.set_title("Cumulative Growth by Risk Profile", fontsize=13, fontweight="bold")
+    ax.set_ylabel("Portfolio Value ($)")
+    ax.legend(frameon=False)
+    ax.spines[["top", "right"]].set_visible(False)
+    ax.grid(alpha=0.2)
+    fig.tight_layout()
+    fig.savefig(os.path.join(OUT, "risk_profile_comparison.png"), dpi=150)
     plt.close(fig)
 
 

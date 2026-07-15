@@ -52,9 +52,26 @@ homegrown backtests - handled in `src/models.py::train_predict_walk_forward`.
 classic Markowitz estimation-error issue). Ledoit-Wolf shrinkage toward
 a structured target fixes this and is standard practice.
 
-**Optimizer.** Constrained mean-variance via `scipy.SLSQP` - max Sharpe,
-fully invested, long-only, 25% single-name cap so the optimizer can't
-just dump everything into whatever the model likes most that month.
+**Optimizer.** Constrained mean-variance via `scipy.SLSQP` - fully
+invested, long-only. On top of the base setup, `src/optimizer.py` supports:
+
+- **Risk appetite**, exposed either as a continuous `risk_aversion`
+  parameter (classic Markowitz quadratic utility: maximize
+  `w'mu - (lambda/2) w'Sigma w`, higher lambda = more conservative) or
+  as three presets - `conservative` / `moderate` / `aggressive` - each
+  bundling a sensible risk-aversion value with a matching per-asset cap,
+  so it can be exposed as a single dropdown instead of asking someone to
+  pick a lambda out of the air.
+- **Return targeting**: `target_return` adds a minimum-return constraint
+  so you can solve for the lowest-risk portfolio that still hits a
+  required return, instead of only ever maximizing Sharpe.
+- **Per-asset bounds**: `asset_bounds` overrides the uniform cap for
+  specific names (e.g. force a minimum position, or lock an asset out
+  entirely).
+- **Sector constraints**: `sector_map` + `sector_caps` cap total exposure
+  to a given sector (e.g. keep tech under 40%), which matters in practice
+  since an unconstrained optimizer will happily concentrate in whatever
+  correlated cluster of names the model likes that month.
 
 **Backtest.** Monthly rebalancing, 10bps transaction cost per unit
 turnover, weights drift with returns between rebalances rather than
@@ -85,6 +102,24 @@ up as-is on live markets. The point of the project is the methodology -
 no-lookahead walk-forward evaluation, shrinkage risk estimation,
 constrained optimization, actually benchmarking against something -
 not the specific Sharpe ratio.
+
+### Risk appetite comparison
+
+| Profile | CAGR | Ann. Vol | Sharpe | Max DD |
+|---|---|---|---|---|
+| Conservative | 25.2% | 16.3% | 1.34 | -30.0% |
+| Moderate | 34.4% | 19.6% | 1.51 | -35.4% |
+| Aggressive | 36.4% | 22.8% | 1.39 | -41.2% |
+
+![Risk Profile Comparison](outputs/risk_profile_comparison.png)
+
+Same underlying model and predictions, three different risk-aversion
+settings in the optimizer. Vol and drawdown scale up monotonically with
+risk appetite as expected; Sharpe peaking in the middle rather than at
+either extreme is a realistic pattern, not a bug - very low risk
+aversion lets the optimizer concentrate hard in whatever the model likes
+most that month, which raises return but eventually costs more in risk
+than it earns back.
 
 ## Structure
 
@@ -117,3 +152,4 @@ frontier, weights over time, feature importance, and a metrics CSV.
 
 - Black-Litterman to blend the ML's views with a market-cap prior, reducing sensitivity to noisy point estimates of mu
 - Purged/embargoed cross-validation instead of a simple chronological split, to more rigorously bound label leakage
+- A small Streamlit/Flask front end exposing the risk profile picker and constraint inputs directly, instead of editing kwargs in code

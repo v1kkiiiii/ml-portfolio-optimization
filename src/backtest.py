@@ -13,7 +13,15 @@ from src.risk import estimate_covariance
 from src.optimizer import optimize_portfolio
 
 
-def run_backtest(prices, pred_returns, cov_lookback=126, max_weight=0.25, tc_bps=10.0):
+def run_backtest(prices, pred_returns, cov_lookback=126, max_weight=0.25, tc_bps=10.0, optimizer_kwargs=None):
+    """
+    optimizer_kwargs, if given, is passed straight through to
+    optimize_portfolio() for the ML leg - e.g. {"risk_profile": "conservative"}
+    or {"sector_map": {...}, "sector_caps": {"Tech": 0.4}}. Lets you rerun
+    the same backtest under different risk appetites/constraints without
+    touching this function.
+    """
+    optimizer_kwargs = optimizer_kwargs or {"objective": "max_sharpe"}
     daily_ret = prices.pct_change().dropna()
     rebalance_dates = sorted(pred_returns["date"].unique())
     tickers = prices.columns.tolist()
@@ -31,7 +39,7 @@ def run_backtest(prices, pred_returns, cov_lookback=126, max_weight=0.25, tc_bps
         mu_row = pred_returns[pred_returns["date"] == rdate].set_index("ticker")["pred_ret"]
         mu_row = mu_row.reindex(tickers).fillna(0.0) * (252 / 21)  # annualize the 21d pred
 
-        weights_ml[rdate] = optimize_portfolio(mu_row, sigma, objective="max_sharpe", max_weight=max_weight)
+        weights_ml[rdate] = optimize_portfolio(mu_row, sigma, max_weight=max_weight, **optimizer_kwargs)
 
         vol = np.sqrt(np.diag(sigma.values))
         inv_vol = 1 / np.where(vol == 0, np.nan, vol)
