@@ -1,6 +1,6 @@
 # ML-Driven Portfolio Optimization
 
-An ML-driven portfolio construction system built to demonstrate the full quant research stack — from features to a properly out-of-sample-tested Sharpe ratio.
+An ML-driven portfolio construction system built to show off the full quant research stack, from features all the way to a properly out-of-sample-tested Sharpe ratio.
 
 Combines a gradient-boosted return forecaster with mean-variance
 optimization, evaluated with a proper walk-forward backtest against
@@ -8,19 +8,18 @@ equal-weight and inverse-vol benchmarks.
 
 ## Pipeline
 
-```
 Prices -> Features -> ML Model -> Expected Returns (mu)
-                                         |
+|
 Prices -> Rolling Window -> Ledoit-Wolf -> Covariance (Sigma)
-                                         |
-                          Mean-Variance Optimizer
-                     max Sharpe, long-only, 25% cap per asset
-                                         |
-                             Walk-Forward Backtest
-                       monthly rebalance, transaction costs
-                                         |
-                Sharpe / Sortino / Max DD / Calmar vs benchmarks
-```
+|
+Mean-Variance Optimizer
+max Sharpe, long-only, 25% cap per asset
+|
+Walk-Forward Backtest
+monthly rebalance, transaction costs
+|
+Sharpe / Sortino / Max DD / Calmar vs benchmarks
+
 
 ## Notes on the design choices
 
@@ -123,20 +122,19 @@ than it earns back.
 
 ## Structure
 
-```
 portfolio-ml/
 ├── data/
-│   └── generate_data.py     synthetic market simulator
+│ └── generate_data.py synthetic market simulator
 ├── src/
-│   ├── features.py          feature engineering, no-lookahead labels
-│   ├── models.py             walk-forward ML training/prediction
-│   ├── risk.py                Ledoit-Wolf covariance estimation
-│   ├── optimizer.py           mean-variance optimization, risk profiles, constraints
-│   └── backtest.py            walk-forward backtest engine + metrics
-├── main.py                    runs the full pipeline
+│ ├── features.py feature engineering, no-lookahead labels
+│ ├── models.py walk-forward ML training/prediction
+│ ├── risk.py Ledoit-Wolf covariance estimation
+│ ├── optimizer.py mean-variance optimization, risk profiles, constraints
+│ └── backtest.py walk-forward backtest engine + metrics
+├── main.py runs the full pipeline
 ├── requirements.txt
-└── outputs/                   generated charts + metrics
-```
+└── outputs/ generated charts + metrics
+
 
 ## Running it
 
